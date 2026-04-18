@@ -65,32 +65,29 @@ def build_payload(state, ownership, event, risk, month_min, month_max, top_n):
     events_filtered      = flt_event(EVENTS_ALL)[:top_n]
     state_month_filtered = flt_month(flt_state(STATE_MONTH_ALL))
 
-    # Recompute KPIs from filtered points
-    if pts:
-        def avg(k):
-            vals = [r[k] for r in pts if r.get(k) is not None]
-            return sum(vals)/len(vals) if vals else 0
-        def tot(k):
-            return sum(r.get(k,0) or 0 for r in pts)
-        def uniq(k):
-            return len(set(r[k] for r in pts if r.get(k)))
-        def rcnt(v):
-            return sum(1 for r in pts if r.get("risk_category","") == v)
+    # Recompute KPIs from pre-aggregated state data (accurate, not sampled)
+    if states_filtered:
+        def sagg(k, fn):
+            vals = [r[k] for r in states_filtered if r.get(k) is not None]
+            return fn(vals) if vals else 0
 
         kpi = {
-            "total_rows":      len(pts),
-            "total_utilities": uniq("utility_number"),
-            "total_states":    uniq("state"),
-            "avg_saidi":  avg("saidi"),
-            "avg_saifi":  avg("saifi"),
-            "avg_caidi":  avg("caidi"),
-            "total_damage":   tot("damage"),
-            "total_injuries": tot("injuries"),
-            "total_deaths":   tot("deaths"),
-            "high_risk":   rcnt("High Risk"),
-            "medium_risk": rcnt("Medium Risk"),
-            "low_risk":    rcnt("Low Risk"),
+            "total_rows":      KPI_ALL["total_rows"],   # always show full count
+            "total_utilities": KPI_ALL["total_utilities"],
+            "total_states":    len(states_filtered),    # exact count from aggregated data
+            "avg_saidi":  sagg("avg_saidi",  lambda v: sum(v)/len(v)),
+            "avg_saifi":  sagg("avg_saifi",  lambda v: sum(v)/len(v)),
+            "avg_caidi":  sagg("avg_caidi",  lambda v: sum(v)/len(v)),
+            "total_damage":   sagg("total_damage",   sum),
+            "total_injuries": sagg("total_injuries", sum),
+            "total_deaths":   sagg("total_deaths",   sum),
+            "high_risk":   sagg("high_risk_count",  sum) if "high_risk_count" in (states_filtered[0] if states_filtered else {}) else KPI_ALL["high_risk"],
+            "medium_risk": KPI_ALL["medium_risk"],
+            "low_risk":    KPI_ALL["low_risk"],
         }
+        # Use full KPI when no filters applied
+        if state == "All" and ownership == "All" and event == "All" and risk == "All" and month_min == 1 and month_max == 12:
+            kpi = KPI_ALL
         # Top state by SAIDI
         from collections import defaultdict
         state_saidi = defaultdict(list)
